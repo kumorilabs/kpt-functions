@@ -24,7 +24,7 @@ do
         fi
 
         ver=$(cat $d/VERSION)
-        docker build -t $REPO/fn-$fn:$ver -f ./Dockerfile --build-arg=FN=$fn .
+        docker build -t $REPO/kpt-fn-$fn:$ver -f ./Dockerfile --build-arg=FN=$fn .
         if [ $push -eq 1 ]; then
             docker push $REPO/fn-$fn:$ver
         fi
