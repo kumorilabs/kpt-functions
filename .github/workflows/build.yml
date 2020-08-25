@@ -6,7 +6,7 @@ on:
     branches: [ master ]
 jobs:
   build:
-    name: Release
+    name: Build and Release
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -25,10 +25,10 @@ jobs:
           DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
         run: |
           echo "${DOCKER_PASSWORD}" | docker login --username "${DOCKER_USERNAME}" --password-stdin
-        # if: startsWith(github.ref, 'refs/tags/')
+        if: github.ref == 'refs/heads/master'
       - name: Push
         run: make push
-        # if: startsWith(github.ref, 'refs/tags/')
+        if: github.ref == 'refs/heads/master'
       - name: Cleanup
         if: always()
         run: |
