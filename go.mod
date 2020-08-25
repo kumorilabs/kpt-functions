@@ -1,4 +1,4 @@
-module kumorilabs.com/kustomize-bases/kpt/functions
+module github.com/kumorilabs/kpt-functions
 
 go 1.14
 
