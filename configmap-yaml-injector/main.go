@@ -13,7 +13,7 @@ type Spec struct {
 	Config map[string]interface{} `yaml:"config,omitempty"`
 }
 
-type ArgoCDConfig struct {
+type Config struct {
 	Spec Spec `yaml:"spec,omitempty"`
 }
 
@@ -22,7 +22,7 @@ type ArgoCDConfig struct {
 // ConfigMaps
 
 func main() {
-	functionConfig := &ArgoCDConfig{}
+	functionConfig := &Config{}
 	resourceList := &framework.ResourceList{FunctionConfig: functionConfig}
 
 	cmd := framework.Command(resourceList, func() error {
