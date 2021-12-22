@@ -6,38 +6,54 @@ import (
 
 	"sigs.k8s.io/kustomize/kyaml/fn/framework"
 	"sigs.k8s.io/kustomize/kyaml/fn/framework/command"
+	"sigs.k8s.io/kustomize/kyaml/kio"
 	"sigs.k8s.io/kustomize/kyaml/yaml"
 )
 
-var key, value string
+type Config struct {
+	Key   string `yaml:"key"`
+	Value string `yaml:"value"`
+}
 
 func main() {
-	fn := func(resourceList *framework.ResourceList) error {
-		for i := range resourceList.Items {
-			item := resourceList.Items[i]
+	config := &Config{}
 
-			meta, err := item.GetMeta()
-			if err != nil {
-				return err
-			}
-			if len(meta.Name) > 0 {
-				if err := item.PipeE(yaml.SetAnnotation(key, value)); err != nil {
-					return err
-				}
-			}
-		}
-		return nil
+	p := framework.SimpleProcessor{
+		Config: config,
+		Filter: kio.FilterFunc(annotate(config)),
 	}
 
-	cmd := command.Build(framework.ResourceListProcessorFunc(fn), command.StandaloneEnabled, false)
-	cmd.Flags().StringVar(&key, "key", "", "flag key")
-	cmd.Flags().StringVar(&value, "value", "", "flag value")
+	cmd := command.Build(p, command.StandaloneEnabled, false)
+	cmd.Flags().StringVar(&config.Key, "key", "", "flag key")
+	cmd.Flags().StringVar(&config.Value, "value", "", "flag value")
 
-	if key == "" {
-		key = "value"
+	if config.Key == "" {
+		config.Key = "some-annotation"
 	}
+
 	if err := cmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
+	}
+}
+
+func annotate(config *Config) func([]*yaml.RNode) ([]*yaml.RNode, error) {
+	return func(items []*yaml.RNode) ([]*yaml.RNode, error) {
+		for i := range items {
+			item := items[i]
+
+			meta, err := item.GetMeta()
+			if err != nil {
+				return items, err
+			}
+
+			if len(meta.Name) > 0 {
+				if err := item.PipeE(yaml.SetAnnotation(config.Key, config.Value)); err != nil {
+					return items, err
+				}
+			}
+
+		}
+		return items, nil
 	}
 }
