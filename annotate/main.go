@@ -1,22 +1,19 @@
 package main
 
 import (
+	"fmt"
 	"os"
 
 	"sigs.k8s.io/kustomize/kyaml/fn/framework"
+	"sigs.k8s.io/kustomize/kyaml/fn/framework/command"
 	"sigs.k8s.io/kustomize/kyaml/yaml"
 )
 
 var key, value string
 
 func main() {
-	resourceList := &framework.ResourceList{}
-	cmd := framework.Command(resourceList, func() error {
-		// cmd.Execute() will parse the ResourceList.functionConfig into cmd.Flags from
-		// the ResourceList.functionConfig.data field.
+	fn := func(resourceList *framework.ResourceList) error {
 		for i := range resourceList.Items {
-			// modify the resources using the kyaml/yaml library:
-			// https://pkg.go.dev/sigs.k8s.io/kustomize/kyaml/yaml
 			item := resourceList.Items[i]
 
 			meta, err := item.GetMeta()
@@ -30,7 +27,9 @@ func main() {
 			}
 		}
 		return nil
-	})
+	}
+
+	cmd := command.Build(framework.ResourceListProcessorFunc(fn), command.StandaloneEnabled, false)
 	cmd.Flags().StringVar(&key, "key", "", "flag key")
 	cmd.Flags().StringVar(&value, "value", "", "flag value")
 
@@ -38,6 +37,7 @@ func main() {
 		key = "value"
 	}
 	if err := cmd.Execute(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
