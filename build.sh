@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO=kumorilabs
+REPO=ghcr.io/kumorilabs
 
 push=0
 while [ ! $# -eq 0 ]
@@ -24,9 +24,9 @@ do
         fi
 
         ver=$(cat $d/VERSION)
-        docker build -t $REPO/kpt-fn-$fn:$ver -f ./Dockerfile --build-arg=FN=$fn .
+        docker build -t $REPO/krm-fn-$fn:$ver -f ./Dockerfile --build-arg=FN=$fn .
         if [ $push -eq 1 ]; then
-            docker push $REPO/kpt-fn-$fn:$ver
+            docker push $REPO/krm-fn-$fn:$ver
         fi
     fi
 done
