@@ -19,16 +19,16 @@ jobs:
           go-version: 1.14
       - name: Build
         run: make build
-      - name: Docker Login
-        env:
-          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
-        run: |
-          echo "${DOCKER_PASSWORD}" | docker login --username "${DOCKER_USERNAME}" --password-stdin
-        if: github.ref == 'refs/heads/master'
+      - name: Authenticate to Registry
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+        # if: github.ref == 'refs/heads/master'
       - name: Push
         run: make push
-        if: github.ref == 'refs/heads/master'
+        # if: github.ref == 'refs/heads/master'
       - name: Cleanup
         if: always()
         run: |
