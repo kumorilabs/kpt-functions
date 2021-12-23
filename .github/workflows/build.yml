@@ -1,9 +1,9 @@
 name: Go
 on:
   push:
-    branches: [ master ]
+    branches: [ main ]
   pull_request:
-    branches: [ master ]
+    branches: [ main ]
 jobs:
   build:
     name: Build and Release
@@ -25,7 +25,7 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-        if: github.ref == 'refs/heads/master'
+        if: github.ref == 'refs/heads/main'
       - name: Push
         run: make push
-        if: github.ref == 'refs/heads/master'
+        if: github.ref == 'refs/heads/main'
