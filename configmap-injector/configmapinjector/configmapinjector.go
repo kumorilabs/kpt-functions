@@ -23,34 +23,33 @@ metadata:
 `
 )
 
+type injector func(source, target *yaml.RNode) (*yaml.RNode, error)
+
 type ConfigMapInjector struct{}
 
 func (i *ConfigMapInjector) Filter(items []*yaml.RNode) ([]*yaml.RNode, error) {
-	items, err := i.injectFilter(items)
-	if err != nil {
-		return items, err
+	injectors := map[string]injector{
+		kindInject:   injectConfigMap,
+		kindTemplate: templateConfigMap,
 	}
-
-	items, err = i.templateFilter(items)
-	if err != nil {
-		return items, err
+	var err error
+	for kind, injector := range injectors {
+		items, err = i.inject(items, kindSelector(kind), injector)
+		if err != nil {
+			return items, err
+		}
 	}
-	return items, err
+	return items, nil
 }
 
-func (i *ConfigMapInjector) injectFilter(items []*yaml.RNode) ([]*yaml.RNode, error) {
-	injectSelector := framework.Selector{
-		Kinds:       []string{kindInject},
-		APIVersions: []string{apiVersionInjector},
-	}
-
-	injects, err := injectSelector.Filter(items)
+func (i *ConfigMapInjector) inject(items []*yaml.RNode, selector framework.Selector, injector injector) ([]*yaml.RNode, error) {
+	sources, err := selector.Filter(items)
 	if err != nil {
 		return items, err
 	}
-	injectMap := map[*yaml.RNode]bool{}
-	for _, inject := range injects {
-		injectMap[inject] = false
+	sourceMap := map[*yaml.RNode]bool{}
+	for _, source := range sources {
+		sourceMap[source] = false
 	}
 
 	isConfigMap := framework.ResourceMatcherFunc(func(node *yaml.RNode) bool {
@@ -58,7 +57,7 @@ func (i *ConfigMapInjector) injectFilter(items []*yaml.RNode) ([]*yaml.RNode, er
 			node.GetApiVersion() == apiVersionConfigMap
 	})
 
-	isInjectTarget := func(inject *yaml.RNode) framework.ResourceMatcherFunc {
+	isTarget := func(inject *yaml.RNode) framework.ResourceMatcherFunc {
 		return framework.MatchAll(
 			isConfigMap,
 			framework.ResourceMatcherFunc(func(node *yaml.RNode) bool {
@@ -70,10 +69,10 @@ func (i *ConfigMapInjector) injectFilter(items []*yaml.RNode) ([]*yaml.RNode, er
 
 	// look for target configmaps and inject data
 	for i, item := range items {
-		for inject := range injectMap {
-			if isInjectTarget(inject)(item) {
-				injectMap[inject] = true
-				configMap, err := injectConfigMap(inject, item.Copy())
+		for source := range sourceMap {
+			if isTarget(source)(item) {
+				sourceMap[source] = true
+				configMap, err := injector(source, item.Copy())
 				if err != nil {
 					return items, err
 				}
@@ -83,13 +82,13 @@ func (i *ConfigMapInjector) injectFilter(items []*yaml.RNode) ([]*yaml.RNode, er
 	}
 
 	// if no injection occurred, generate a new configmap
-	for inject, injected := range injectMap {
+	for source, injected := range sourceMap {
 		if !injected {
-			configMap, err := newConfigMap(inject)
+			configMap, err := newConfigMap(source)
 			if err != nil {
 				return items, err
 			}
-			configMap, err = injectConfigMap(inject, configMap)
+			configMap, err = injector(source, configMap)
 			if err != nil {
 				return items, err
 			}
@@ -101,67 +100,11 @@ func (i *ConfigMapInjector) injectFilter(items []*yaml.RNode) ([]*yaml.RNode, er
 	return items, nil
 }
 
-func (i *ConfigMapInjector) templateFilter(items []*yaml.RNode) ([]*yaml.RNode, error) {
-	templateSelector := framework.Selector{
-		Kinds:       []string{kindTemplate},
+func kindSelector(kind string) framework.Selector {
+	return framework.Selector{
+		Kinds:       []string{kind},
 		APIVersions: []string{apiVersionInjector},
 	}
-
-	templates, err := templateSelector.Filter(items)
-	if err != nil {
-		return items, err
-	}
-	templateMap := map[*yaml.RNode]bool{}
-	for _, tmpl := range templates {
-		templateMap[tmpl] = false
-	}
-
-	isConfigMap := framework.ResourceMatcherFunc(func(node *yaml.RNode) bool {
-		return node.GetKind() == kindConfigMap &&
-			node.GetApiVersion() == apiVersionConfigMap
-	})
-
-	isTemplateTarget := func(template *yaml.RNode) framework.ResourceMatcherFunc {
-		return framework.MatchAll(
-			isConfigMap,
-			framework.ResourceMatcherFunc(func(node *yaml.RNode) bool {
-				return node.GetName() == template.GetName() &&
-					node.GetNamespace() == template.GetNamespace()
-			}),
-		).Match
-	}
-
-	// look for target configmaps and inject rendered template
-	for i, item := range items {
-		for tmpl := range templateMap {
-			if isTemplateTarget(tmpl)(item) {
-				templateMap[tmpl] = true
-				configMap, err := templateConfigMap(tmpl, item.Copy())
-				if err != nil {
-					return items, err
-				}
-				items[i] = configMap
-			}
-		}
-	}
-
-	// if no injection occurred, generate a new configmap
-	for tmpl, injected := range templateMap {
-		if !injected {
-			configMap, err := newConfigMap(tmpl)
-			if err != nil {
-				return items, err
-			}
-			configMap, err = templateConfigMap(tmpl, configMap)
-			if err != nil {
-				return items, err
-			}
-
-			items = append(items, configMap)
-		}
-	}
-
-	return items, nil
 }
 
 func newConfigMap(inject *yaml.RNode) (*yaml.RNode, error) {
@@ -226,7 +169,7 @@ func templateConfigMap(source *yaml.RNode, configMap *yaml.RNode) (*yaml.RNode, 
 
 	rendered := map[string]string{}
 	for key, val := range data {
-		tmpl, err := template.New(key).Parse(val)
+		tmpl, err := template.New(key).Option("missingkey=error").Parse(val)
 		if err != nil {
 			return configMap, err
 		}
