@@ -651,6 +651,46 @@ data:
     }
 `,
 		},
+		{
+			name:        "readme example",
+			resultCount: 1,
+			input: `
+apiVersion: fn.kumorilabs.io/v1alpha1
+kind: ConfigMapTemplate
+metadata:
+  name: some-cm
+  annotations:
+    config.kubernetes.io/local-config: "true"
+data:
+  config.json: |
+    {
+      "id": "v1",
+      "log-level": "{{.logLevel}}",
+      "base-url": "{{.baseUrl}}",
+    }
+values:
+  logLevel: debug # kpt-set: ${log-level}
+  baseUrl: https://github.com/kumorilabs # kpt-set: ${base-url}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: some-cm
+`,
+			expected: `
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: some-cm
+data:
+  config.json: |
+    {
+      "id": "v1",
+      "log-level": "debug",
+      "base-url": "https://github.com/kumorilabs",
+    }
+`,
+		},
 	}
 	runTests(t, tests)
 }
