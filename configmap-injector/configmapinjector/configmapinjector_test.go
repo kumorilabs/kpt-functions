@@ -17,7 +17,7 @@ type test struct {
 	expected string
 }
 
-func TestConfigMapInjector(t *testing.T) {
+func TestConfigMapInjectorInject(t *testing.T) {
 	var tests = []test{
 		{
 			name: "single key injection",
@@ -263,6 +263,119 @@ data:
       usernameSecret:
         key: username
         name: git-reader
+`,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			baseDir, err := ioutil.TempDir("", "")
+			if !assert.NoError(t, err, test.name) {
+				t.FailNow()
+			}
+			defer os.RemoveAll(baseDir)
+
+			r, err := ioutil.TempFile(baseDir, "k8s-cli-*.yaml")
+			if !assert.NoError(t, err, test.name) {
+				t.FailNow()
+			}
+			defer os.Remove(r.Name())
+			err = ioutil.WriteFile(r.Name(), []byte(test.input), 0600)
+			if !assert.NoError(t, err, test.name) {
+				t.FailNow()
+			}
+
+			configMaps := &framework.Selector{
+				Kinds:       []string{kindConfigMap},
+				APIVersions: []string{apiVersionConfigMap},
+			}
+
+			injector := &ConfigMapInjector{}
+			inout := &kio.LocalPackageReadWriter{
+				PackagePath: baseDir,
+			}
+			err = kio.Pipeline{
+				Inputs:  []kio.Reader{inout},
+				Filters: []kio.Filter{injector, configMaps},
+				Outputs: []kio.Writer{inout},
+			}.Execute()
+
+			if !assert.NoError(t, err, test.name) {
+				t.FailNow()
+			}
+
+			actual, err := ioutil.ReadFile(r.Name())
+			if !assert.NoError(t, err) {
+				t.FailNow()
+			}
+
+			if !assert.Equal(t,
+				strings.TrimSpace(test.expected),
+				strings.TrimSpace(string(actual))) {
+				t.FailNow()
+			}
+		})
+	}
+}
+
+func TestConfigMapInjectorTemplate(t *testing.T) {
+	var tests = []test{
+		{
+			name: "single key template",
+			input: `
+apiVersion: fn.kumorilabs.io/v1alpha1
+kind: ConfigMapTemplate
+metadata:
+  name: some-cm
+  annotations:
+    config.kubernetes.io/local-config: "true"
+data:
+  config.json: |
+    {
+      "deployment": {
+        "files": {
+          "example-resource-file1": {
+            "sourceUrl": "{{.s3BaseUrl}}/{{.s3Bucket}}/example-application/example-resource-file1"
+          },
+          "images/example-resource-file2": {
+            "sourceUrl": "{{.s3BaseUrl}}/{{.s3Bucket}}/example-application/images/example-resource-file2"
+          },
+        }
+      },
+      "id": "v1",
+      "runtime": "python27",
+      "threadsafe": true,
+    }
+values:
+  s3BaseUrl: https://my-s3.com # kpt-set: ${s3BaseUrl}
+  s3Bucket: my-bucket # kpt-set: ${s3Bucket}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: some-cm
+`,
+			expected: `
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: some-cm
+data:
+  config.json: |
+    {
+      "deployment": {
+        "files": {
+          "example-resource-file1": {
+            "sourceUrl": "https://my-s3.com/my-bucket/example-application/example-resource-file1"
+          },
+          "images/example-resource-file2": {
+            "sourceUrl": "https://my-s3.com/my-bucket/example-application/images/example-resource-file2"
+          },
+        }
+      },
+      "id": "v1",
+      "runtime": "python27",
+      "threadsafe": true,
+    }
 `,
 		},
 	}

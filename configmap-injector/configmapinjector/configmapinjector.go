@@ -1,7 +1,9 @@
 package configmapinjector
 
 import (
+	"bytes"
 	"fmt"
+	"text/template"
 
 	"sigs.k8s.io/kustomize/api/konfig"
 	"sigs.k8s.io/kustomize/kyaml/fn/framework"
@@ -9,12 +11,12 @@ import (
 )
 
 const (
-	apiVersionInject    = "fn.kumorilabs.io/v1alpha1"
+	apiVersionInjector  = "fn.kumorilabs.io/v1alpha1"
 	apiVersionConfigMap = "v1"
 	kindInject          = "ConfigMapInject"
+	kindTemplate        = "ConfigMapTemplate"
 	kindConfigMap       = "ConfigMap"
-
-	configMapTemplate = `apiVersion: v1
+	configMapTemplate   = `apiVersion: v1
 kind: ConfigMap
 metadata:
   name: cm
@@ -24,9 +26,22 @@ metadata:
 type ConfigMapInjector struct{}
 
 func (i *ConfigMapInjector) Filter(items []*yaml.RNode) ([]*yaml.RNode, error) {
+	items, err := i.injectFilter(items)
+	if err != nil {
+		return items, err
+	}
+
+	items, err = i.templateFilter(items)
+	if err != nil {
+		return items, err
+	}
+	return items, err
+}
+
+func (i *ConfigMapInjector) injectFilter(items []*yaml.RNode) ([]*yaml.RNode, error) {
 	injectSelector := framework.Selector{
 		Kinds:       []string{kindInject},
-		APIVersions: []string{apiVersionInject},
+		APIVersions: []string{apiVersionInjector},
 	}
 
 	injects, err := injectSelector.Filter(items)
@@ -86,6 +101,69 @@ func (i *ConfigMapInjector) Filter(items []*yaml.RNode) ([]*yaml.RNode, error) {
 	return items, nil
 }
 
+func (i *ConfigMapInjector) templateFilter(items []*yaml.RNode) ([]*yaml.RNode, error) {
+	templateSelector := framework.Selector{
+		Kinds:       []string{kindTemplate},
+		APIVersions: []string{apiVersionInjector},
+	}
+
+	templates, err := templateSelector.Filter(items)
+	if err != nil {
+		return items, err
+	}
+	templateMap := map[*yaml.RNode]bool{}
+	for _, tmpl := range templates {
+		templateMap[tmpl] = false
+	}
+
+	isConfigMap := framework.ResourceMatcherFunc(func(node *yaml.RNode) bool {
+		return node.GetKind() == kindConfigMap &&
+			node.GetApiVersion() == apiVersionConfigMap
+	})
+
+	isTemplateTarget := func(template *yaml.RNode) framework.ResourceMatcherFunc {
+		return framework.MatchAll(
+			isConfigMap,
+			framework.ResourceMatcherFunc(func(node *yaml.RNode) bool {
+				return node.GetName() == template.GetName() &&
+					node.GetNamespace() == template.GetNamespace()
+			}),
+		).Match
+	}
+
+	// look for target configmaps and inject rendered template
+	for i, item := range items {
+		for tmpl := range templateMap {
+			if isTemplateTarget(tmpl)(item) {
+				templateMap[tmpl] = true
+				configMap, err := templateConfigMap(tmpl, item.Copy())
+				if err != nil {
+					return items, err
+				}
+				items[i] = configMap
+			}
+		}
+	}
+
+	// if no injection occurred, generate a new configmap
+	for tmpl, injected := range templateMap {
+		if !injected {
+			configMap, err := newConfigMap(tmpl)
+			if err != nil {
+				return items, err
+			}
+			configMap, err = templateConfigMap(tmpl, configMap)
+			if err != nil {
+				return items, err
+			}
+
+			items = append(items, configMap)
+		}
+	}
+
+	return items, nil
+}
+
 func newConfigMap(inject *yaml.RNode) (*yaml.RNode, error) {
 	configMap, err := yaml.Parse(configMapTemplate)
 	if err != nil {
@@ -125,6 +203,44 @@ func injectConfigMap(inject *yaml.RNode, configMap *yaml.RNode) (*yaml.RNode, er
 
 	cmdata := configMap.GetDataMap()
 	for key, val := range transformed {
+		cmdata[key] = val
+	}
+	configMap.SetDataMap(cmdata)
+	return configMap, nil
+}
+
+func templateConfigMap(source *yaml.RNode, configMap *yaml.RNode) (*yaml.RNode, error) {
+	data := source.GetDataMap()
+
+	rawvals, err := source.GetFieldValue("values")
+	if err != nil {
+		return configMap, err
+	}
+	values, ok := rawvals.(map[string]interface{})
+	if !ok {
+		return configMap, fmt.Errorf(
+			"values must be a map[string]interface{}, got %T",
+			rawvals,
+		)
+	}
+
+	rendered := map[string]string{}
+	for key, val := range data {
+		tmpl, err := template.New(key).Parse(val)
+		if err != nil {
+			return configMap, err
+		}
+
+		var buf bytes.Buffer
+		err = tmpl.Execute(&buf, values)
+		if err != nil {
+			return configMap, err
+		}
+		rendered[key] = buf.String()
+	}
+
+	cmdata := configMap.GetDataMap()
+	for key, val := range rendered {
 		cmdata[key] = val
 	}
 	configMap.SetDataMap(cmdata)
