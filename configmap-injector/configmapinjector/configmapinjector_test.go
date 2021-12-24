@@ -12,16 +12,18 @@ import (
 )
 
 type test struct {
-	name     string
-	input    string
-	expected string
-	errorMsg string
+	name        string
+	input       string
+	expected    string
+	resultCount int
+	errorMsg    string
 }
 
 func TestConfigMapInjectorInject(t *testing.T) {
 	var tests = []test{
 		{
-			name: "single key injection",
+			name:        "single key injection",
+			resultCount: 1,
 			input: `
 apiVersion: fn.kumorilabs.io/v1alpha1
 kind: ConfigMapInject
@@ -67,7 +69,8 @@ data:
 `,
 		},
 		{
-			name: "multiple key injections",
+			name:        "multiple key injections",
+			resultCount: 1,
 			input: `
 apiVersion: fn.kumorilabs.io/v1alpha1
 kind: ConfigMapInject
@@ -123,7 +126,8 @@ data:
 `,
 		},
 		{
-			name: "multiple injections",
+			name:        "multiple injections",
+			resultCount: 2,
 			input: `
 apiVersion: fn.kumorilabs.io/v1alpha1
 kind: ConfigMapInject
@@ -183,7 +187,8 @@ data:
 `,
 		},
 		{
-			name: "merges into existing",
+			name:        "merges into existing",
+			resultCount: 1,
 			input: `
 apiVersion: fn.kumorilabs.io/v1alpha1
 kind: ConfigMapInject
@@ -232,7 +237,8 @@ data:
 `,
 		},
 		{
-			name: "generates configmap if it doesn't exist",
+			name:        "generates configmap if it doesn't exist",
+			resultCount: 1,
 			input: `
 apiVersion: fn.kumorilabs.io/v1alpha1
 kind: ConfigMapInject
@@ -273,7 +279,8 @@ data:
 func TestConfigMapInjectorTemplate(t *testing.T) {
 	var tests = []test{
 		{
-			name: "single key template",
+			name:        "single key template",
+			resultCount: 1,
 			input: `
 apiVersion: fn.kumorilabs.io/v1alpha1
 kind: ConfigMapTemplate
@@ -332,7 +339,8 @@ data:
 `,
 		},
 		{
-			name: "multiple key template",
+			name:        "multiple key template",
+			resultCount: 1,
 			input: `
 apiVersion: fn.kumorilabs.io/v1alpha1
 kind: ConfigMapTemplate
@@ -396,7 +404,8 @@ data:
 `,
 		},
 		{
-			name: "missing value",
+			name:        "missing value",
+			resultCount: 1,
 			input: `
 apiVersion: fn.kumorilabs.io/v1alpha1
 kind: ConfigMapTemplate
@@ -438,7 +447,8 @@ metadata:
 `,
 		},
 		{
-			name: "multiple templates",
+			name:        "multiple templates",
+			resultCount: 2,
 			input: `
 apiVersion: fn.kumorilabs.io/v1alpha1
 kind: ConfigMapTemplate
@@ -522,7 +532,8 @@ data:
 `,
 		},
 		{
-			name: "merges into existing",
+			name:        "merges into existing",
+			resultCount: 1,
 			input: `
 apiVersion: fn.kumorilabs.io/v1alpha1
 kind: ConfigMapTemplate
@@ -586,7 +597,8 @@ data:
 `,
 		},
 		{
-			name: "generates configmap if it doesn't exist",
+			name:        "generates configmap if it doesn't exist",
+			resultCount: 1,
 			input: `
 apiVersion: fn.kumorilabs.io/v1alpha1
 kind: ConfigMapTemplate
@@ -678,7 +690,7 @@ func runTests(t *testing.T, tests []test) {
 			}.Execute()
 
 			if test.errorMsg != "" {
-				if !assert.NotNil(t, err) {
+				if !assert.NotNil(t, err, test.name) {
 					t.FailNow()
 				}
 				if !assert.Contains(t, err.Error(), test.errorMsg) {
@@ -686,7 +698,16 @@ func runTests(t *testing.T, tests []test) {
 				}
 			}
 
-			if test.errorMsg == "" && !assert.NoError(t, err) {
+			if test.errorMsg == "" && !assert.NoError(t, err, test.name) {
+				t.FailNow()
+			}
+
+			// get results
+			results, err := injector.Results()
+			if !assert.NoError(t, err, test.name, test.name) {
+				t.FailNow()
+			}
+			if !assert.Equal(t, test.resultCount, len(results), test.name) {
 				t.FailNow()
 			}
 
@@ -696,12 +717,12 @@ func runTests(t *testing.T, tests []test) {
 				Filters: []kio.Filter{configMaps},
 				Outputs: []kio.Writer{inout},
 			}.Execute()
-			if !assert.NoError(t, err) {
+			if !assert.NoError(t, err, test.name) {
 				t.FailNow()
 			}
 
 			actual, err := ioutil.ReadFile(r.Name())
-			if !assert.NoError(t, err) {
+			if !assert.NoError(t, err, test.name) {
 				t.FailNow()
 			}
 

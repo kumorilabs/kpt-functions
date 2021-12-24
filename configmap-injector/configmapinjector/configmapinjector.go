@@ -3,10 +3,13 @@ package configmapinjector
 import (
 	"bytes"
 	"fmt"
+	"strconv"
+	"strings"
 	"text/template"
 
 	"sigs.k8s.io/kustomize/api/konfig"
 	"sigs.k8s.io/kustomize/kyaml/fn/framework"
+	"sigs.k8s.io/kustomize/kyaml/kio/kioutil"
 	"sigs.k8s.io/kustomize/kyaml/yaml"
 )
 
@@ -25,12 +28,21 @@ metadata:
 
 type injector func(source, target *yaml.RNode) (*yaml.RNode, error)
 
-type ConfigMapInjector struct{}
+type injectResult struct {
+	Source   *yaml.RNode
+	Target   *yaml.RNode
+	Keys     []string
+	ErrorMsg string
+}
+
+type ConfigMapInjector struct {
+	injectResults []*injectResult
+}
 
 func (i *ConfigMapInjector) Filter(items []*yaml.RNode) ([]*yaml.RNode, error) {
 	injectors := map[string]injector{
-		kindInject:   injectConfigMap,
-		kindTemplate: templateConfigMap,
+		kindInject:   i.injectConfigMap,
+		kindTemplate: i.templateConfigMap,
 	}
 	var err error
 	for kind, injector := range injectors {
@@ -40,6 +52,54 @@ func (i *ConfigMapInjector) Filter(items []*yaml.RNode) ([]*yaml.RNode, error) {
 		}
 	}
 	return items, nil
+}
+
+func (i *ConfigMapInjector) Results() (framework.Results, error) {
+	var results framework.Results
+	if len(i.injectResults) == 0 {
+		results = append(results, &framework.Result{
+			Message: "no injections",
+		})
+		return results, nil
+	}
+	for _, injectResult := range i.injectResults {
+		var (
+			msg        string
+			severity   framework.Severity
+			sourceName = fmt.Sprintf("%s %s", injectResult.Source.GetKind(), injectResult.Source.GetName())
+			targetName = injectResult.Target.GetName()
+		)
+		if injectResult.ErrorMsg != "" {
+			msg = fmt.Sprintf("%s failed to inject ConfigMap: %s", sourceName, injectResult.ErrorMsg)
+			severity = framework.Error
+		} else {
+			msg = fmt.Sprintf("%s -> %s with keys: %v", sourceName, targetName, injectResult.Keys)
+			severity = framework.Info
+		}
+
+		result := &framework.Result{
+			Message:  msg,
+			Severity: severity,
+			Field: &framework.Field{
+				Path: strings.Join(injectResult.Target.FieldPath(), "."),
+			},
+		}
+
+		filePath, fileIndex, err := kioutil.GetFileAnnotations(injectResult.Target)
+		if err != nil {
+			return results, err
+		}
+		result.File = &framework.File{
+			Path: filePath,
+		}
+		fidx, err := strconv.Atoi(fileIndex)
+		if err == nil {
+			result.File.Index = fidx
+		}
+
+		results = append(results, result)
+	}
+	return results, nil
 }
 
 func (i *ConfigMapInjector) inject(items []*yaml.RNode, selector framework.Selector, injector injector) ([]*yaml.RNode, error) {
@@ -123,22 +183,30 @@ func newConfigMap(inject *yaml.RNode) (*yaml.RNode, error) {
 	return configMap, nil
 }
 
-func injectConfigMap(inject *yaml.RNode, configMap *yaml.RNode) (*yaml.RNode, error) {
-	data, err := inject.GetFieldValue("data")
+func (i *ConfigMapInjector) injectConfigMap(source *yaml.RNode, configMap *yaml.RNode) (*yaml.RNode, error) {
+	result := newInjectResult(source, configMap)
+	defer func() {
+		i.injectResults = append(i.injectResults, result)
+	}()
+
+	data, err := source.GetFieldValue("data")
 	if err != nil {
 		return configMap, err
 	}
 	dataMap, ok := data.(map[string]interface{})
 	if !ok {
-		return configMap, fmt.Errorf(
+		err = fmt.Errorf(
 			"data must be a map[string]interface, got %T",
 			data,
 		)
+		result.ErrorMsg = err.Error()
+		return configMap, err
 	}
 	transformed := map[string]string{}
 	for key, val := range dataMap {
 		yml, err := yaml.Marshal(val)
 		if err != nil {
+			result.ErrorMsg = err.Error()
 			return configMap, err
 		}
 		transformed[key] = string(yml)
@@ -147,12 +215,18 @@ func injectConfigMap(inject *yaml.RNode, configMap *yaml.RNode) (*yaml.RNode, er
 	cmdata := configMap.GetDataMap()
 	for key, val := range transformed {
 		cmdata[key] = val
+		result.Keys = append(result.Keys, key)
 	}
 	configMap.SetDataMap(cmdata)
 	return configMap, nil
 }
 
-func templateConfigMap(source *yaml.RNode, configMap *yaml.RNode) (*yaml.RNode, error) {
+func (i *ConfigMapInjector) templateConfigMap(source *yaml.RNode, configMap *yaml.RNode) (*yaml.RNode, error) {
+	result := newInjectResult(source, configMap)
+	defer func() {
+		i.injectResults = append(i.injectResults, result)
+	}()
+
 	data := source.GetDataMap()
 
 	rawvals, err := source.GetFieldValue("values")
@@ -161,10 +235,12 @@ func templateConfigMap(source *yaml.RNode, configMap *yaml.RNode) (*yaml.RNode, 
 	}
 	values, ok := rawvals.(map[string]interface{})
 	if !ok {
-		return configMap, fmt.Errorf(
+		err = fmt.Errorf(
 			"values must be a map[string]interface{}, got %T",
 			rawvals,
 		)
+		result.ErrorMsg = err.Error()
+		return configMap, err
 	}
 
 	rendered := map[string]string{}
@@ -177,6 +253,7 @@ func templateConfigMap(source *yaml.RNode, configMap *yaml.RNode) (*yaml.RNode, 
 		var buf bytes.Buffer
 		err = tmpl.Execute(&buf, values)
 		if err != nil {
+			result.ErrorMsg = err.Error()
 			return configMap, err
 		}
 		rendered[key] = buf.String()
@@ -185,7 +262,16 @@ func templateConfigMap(source *yaml.RNode, configMap *yaml.RNode) (*yaml.RNode, 
 	cmdata := configMap.GetDataMap()
 	for key, val := range rendered {
 		cmdata[key] = val
+		result.Keys = append(result.Keys, key)
 	}
 	configMap.SetDataMap(cmdata)
 	return configMap, nil
+}
+
+func newInjectResult(source, target *yaml.RNode) *injectResult {
+	return &injectResult{
+		Source: source,
+		Target: target,
+		Keys:   []string{},
+	}
 }
