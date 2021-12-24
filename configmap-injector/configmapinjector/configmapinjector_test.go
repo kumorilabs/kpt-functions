@@ -12,15 +12,18 @@ import (
 )
 
 type test struct {
-	name     string
-	input    string
-	expected string
+	name        string
+	input       string
+	expected    string
+	resultCount int
+	errorMsg    string
 }
 
-func TestConfigMapInjector(t *testing.T) {
+func TestConfigMapInjectorInject(t *testing.T) {
 	var tests = []test{
 		{
-			name: "single key injection",
+			name:        "single key injection",
+			resultCount: 1,
 			input: `
 apiVersion: fn.kumorilabs.io/v1alpha1
 kind: ConfigMapInject
@@ -66,7 +69,8 @@ data:
 `,
 		},
 		{
-			name: "multiple key injections",
+			name:        "multiple key injections",
+			resultCount: 1,
 			input: `
 apiVersion: fn.kumorilabs.io/v1alpha1
 kind: ConfigMapInject
@@ -122,7 +126,8 @@ data:
 `,
 		},
 		{
-			name: "multiple injections",
+			name:        "multiple injections",
+			resultCount: 2,
 			input: `
 apiVersion: fn.kumorilabs.io/v1alpha1
 kind: ConfigMapInject
@@ -182,7 +187,8 @@ data:
 `,
 		},
 		{
-			name: "merges into existing",
+			name:        "merges into existing",
+			resultCount: 1,
 			input: `
 apiVersion: fn.kumorilabs.io/v1alpha1
 kind: ConfigMapInject
@@ -231,7 +237,8 @@ data:
 `,
 		},
 		{
-			name: "generates configmap if it doesn't exist",
+			name:        "generates configmap if it doesn't exist",
+			resultCount: 1,
 			input: `
 apiVersion: fn.kumorilabs.io/v1alpha1
 kind: ConfigMapInject
@@ -266,6 +273,429 @@ data:
 `,
 		},
 	}
+	runTests(t, tests)
+}
+
+func TestConfigMapInjectorTemplate(t *testing.T) {
+	var tests = []test{
+		{
+			name:        "single key template",
+			resultCount: 1,
+			input: `
+apiVersion: fn.kumorilabs.io/v1alpha1
+kind: ConfigMapTemplate
+metadata:
+  name: some-cm
+  annotations:
+    config.kubernetes.io/local-config: "true"
+data:
+  config.json: |
+    {
+      "deployment": {
+        "files": {
+          "example-resource-file1": {
+            "sourceUrl": "{{.s3BaseUrl}}/{{.s3Bucket}}/example-application/example-resource-file1"
+          },
+          "images/example-resource-file2": {
+            "sourceUrl": "{{.s3BaseUrl}}/{{.s3Bucket}}/example-application/images/example-resource-file2"
+          },
+        }
+      },
+      "id": "v1",
+      "runtime": "python27",
+      "threadsafe": true,
+    }
+values:
+  s3BaseUrl: https://my-s3.com # kpt-set: ${s3BaseUrl}
+  s3Bucket: my-bucket # kpt-set: ${s3Bucket}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: some-cm
+`,
+			expected: `
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: some-cm
+data:
+  config.json: |
+    {
+      "deployment": {
+        "files": {
+          "example-resource-file1": {
+            "sourceUrl": "https://my-s3.com/my-bucket/example-application/example-resource-file1"
+          },
+          "images/example-resource-file2": {
+            "sourceUrl": "https://my-s3.com/my-bucket/example-application/images/example-resource-file2"
+          },
+        }
+      },
+      "id": "v1",
+      "runtime": "python27",
+      "threadsafe": true,
+    }
+`,
+		},
+		{
+			name:        "multiple key template",
+			resultCount: 1,
+			input: `
+apiVersion: fn.kumorilabs.io/v1alpha1
+kind: ConfigMapTemplate
+metadata:
+  name: some-cm
+  annotations:
+    config.kubernetes.io/local-config: "true"
+data:
+  config.json: |
+    {
+      "deployment": {
+        "files": {
+          "example-resource-file1": {
+            "sourceUrl": "{{.s3BaseUrl}}/{{.s3Bucket}}/example-application/example-resource-file1"
+          },
+          "images/example-resource-file2": {
+            "sourceUrl": "{{.s3BaseUrl}}/{{.s3Bucket}}/example-application/images/example-resource-file2"
+          },
+        }
+      },
+      "id": "v1",
+      "runtime": "python27",
+      "threadsafe": true,
+    }
+  data.json: |
+    {"file": "{{.filePath}}"}
+values:
+  s3BaseUrl: https://my-s3.com # kpt-set: ${s3BaseUrl}
+  s3Bucket: my-bucket # kpt-set: ${s3Bucket}
+  filePath: /tmp/data
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: some-cm
+`,
+			expected: `
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: some-cm
+data:
+  config.json: |
+    {
+      "deployment": {
+        "files": {
+          "example-resource-file1": {
+            "sourceUrl": "https://my-s3.com/my-bucket/example-application/example-resource-file1"
+          },
+          "images/example-resource-file2": {
+            "sourceUrl": "https://my-s3.com/my-bucket/example-application/images/example-resource-file2"
+          },
+        }
+      },
+      "id": "v1",
+      "runtime": "python27",
+      "threadsafe": true,
+    }
+  data.json: |
+    {"file": "/tmp/data"}
+`,
+		},
+		{
+			name:        "missing value",
+			resultCount: 1,
+			input: `
+apiVersion: fn.kumorilabs.io/v1alpha1
+kind: ConfigMapTemplate
+metadata:
+  name: some-cm
+  annotations:
+    config.kubernetes.io/local-config: "true"
+data:
+  config.json: |
+    {
+      "deployment": {
+        "files": {
+          "example-resource-file1": {
+            "sourceUrl": "{{.s3BaseUrl}}/{{.s3Bucket}}/example-application/example-resource-file1"
+          },
+          "images/example-resource-file2": {
+            "sourceUrl": "{{.s3BaseUrl}}/{{.s3Bucket}}/example-application/images/example-resource-file2"
+          },
+        }
+      },
+      "id": "v1",
+      "runtime": "python27",
+      "threadsafe": true,
+    }
+values:
+  s3BaseUrl: https://my-s3.com # kpt-set: ${s3BaseUrl}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: some-cm
+`,
+			errorMsg: "map has no entry for key",
+			expected: `
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: some-cm
+`,
+		},
+		{
+			name:        "multiple templates",
+			resultCount: 2,
+			input: `
+apiVersion: fn.kumorilabs.io/v1alpha1
+kind: ConfigMapTemplate
+metadata:
+  name: some-cm
+  annotations:
+    config.kubernetes.io/local-config: "true"
+data:
+  config.json: |
+    {
+      "deployment": {
+        "files": {
+          "example-resource-file1": {
+            "sourceUrl": "{{.s3BaseUrl}}/{{.s3Bucket}}/example-application/example-resource-file1"
+          },
+          "images/example-resource-file2": {
+            "sourceUrl": "{{.s3BaseUrl}}/{{.s3Bucket}}/example-application/images/example-resource-file2"
+          },
+        }
+      },
+      "id": "v1",
+      "runtime": "python27",
+      "threadsafe": true,
+    }
+values:
+  s3BaseUrl: https://my-s3.com # kpt-set: ${s3BaseUrl}
+  s3Bucket: my-bucket # kpt-set: ${s3Bucket}
+---
+apiVersion: fn.kumorilabs.io/v1alpha1
+kind: ConfigMapTemplate
+metadata:
+  name: another-cm
+  annotations:
+    config.kubernetes.io/local-config: "true"
+data:
+  data.json: |
+    {"file": "{{.filePath}}"}
+values:
+  filePath: /tmp/data
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: some-cm
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: another-cm
+`,
+			expected: `
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: some-cm
+data:
+  config.json: |
+    {
+      "deployment": {
+        "files": {
+          "example-resource-file1": {
+            "sourceUrl": "https://my-s3.com/my-bucket/example-application/example-resource-file1"
+          },
+          "images/example-resource-file2": {
+            "sourceUrl": "https://my-s3.com/my-bucket/example-application/images/example-resource-file2"
+          },
+        }
+      },
+      "id": "v1",
+      "runtime": "python27",
+      "threadsafe": true,
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: another-cm
+data:
+  data.json: |
+    {"file": "/tmp/data"}
+`,
+		},
+		{
+			name:        "merges into existing",
+			resultCount: 1,
+			input: `
+apiVersion: fn.kumorilabs.io/v1alpha1
+kind: ConfigMapTemplate
+metadata:
+  name: some-cm
+  annotations:
+    config.kubernetes.io/local-config: "true"
+data:
+  config.json: |
+    {
+      "deployment": {
+        "files": {
+          "example-resource-file1": {
+            "sourceUrl": "{{.s3BaseUrl}}/{{.s3Bucket}}/example-application/example-resource-file1"
+          },
+          "images/example-resource-file2": {
+            "sourceUrl": "{{.s3BaseUrl}}/{{.s3Bucket}}/example-application/images/example-resource-file2"
+          },
+        }
+      },
+      "id": "v1",
+      "runtime": "python27",
+      "threadsafe": true,
+    }
+values:
+  s3BaseUrl: https://my-s3.com # kpt-set: ${s3BaseUrl}
+  s3Bucket: my-bucket # kpt-set: ${s3Bucket}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: some-cm
+data:
+  data.json: |
+    {"file": "/tmp/data"}
+`,
+			expected: `
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: some-cm
+data:
+  config.json: |
+    {
+      "deployment": {
+        "files": {
+          "example-resource-file1": {
+            "sourceUrl": "https://my-s3.com/my-bucket/example-application/example-resource-file1"
+          },
+          "images/example-resource-file2": {
+            "sourceUrl": "https://my-s3.com/my-bucket/example-application/images/example-resource-file2"
+          },
+        }
+      },
+      "id": "v1",
+      "runtime": "python27",
+      "threadsafe": true,
+    }
+  data.json: |
+    {"file": "/tmp/data"}
+`,
+		},
+		{
+			name:        "generates configmap if it doesn't exist",
+			resultCount: 1,
+			input: `
+apiVersion: fn.kumorilabs.io/v1alpha1
+kind: ConfigMapTemplate
+metadata:
+  name: some-cm
+  annotations:
+    config.kubernetes.io/local-config: "true"
+data:
+  config.json: |
+    {
+      "deployment": {
+        "files": {
+          "example-resource-file1": {
+            "sourceUrl": "{{.s3BaseUrl}}/{{.s3Bucket}}/example-application/example-resource-file1"
+          },
+          "images/example-resource-file2": {
+            "sourceUrl": "{{.s3BaseUrl}}/{{.s3Bucket}}/example-application/images/example-resource-file2"
+          },
+        }
+      },
+      "id": "v1",
+      "runtime": "python27",
+      "threadsafe": true,
+    }
+values:
+  s3BaseUrl: https://my-s3.com # kpt-set: ${s3BaseUrl}
+  s3Bucket: my-bucket # kpt-set: ${s3Bucket}
+`,
+			expected: `
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: some-cm
+data:
+  config.json: |
+    {
+      "deployment": {
+        "files": {
+          "example-resource-file1": {
+            "sourceUrl": "https://my-s3.com/my-bucket/example-application/example-resource-file1"
+          },
+          "images/example-resource-file2": {
+            "sourceUrl": "https://my-s3.com/my-bucket/example-application/images/example-resource-file2"
+          },
+        }
+      },
+      "id": "v1",
+      "runtime": "python27",
+      "threadsafe": true,
+    }
+`,
+		},
+		{
+			name:        "readme example",
+			resultCount: 1,
+			input: `
+apiVersion: fn.kumorilabs.io/v1alpha1
+kind: ConfigMapTemplate
+metadata:
+  name: some-cm
+  annotations:
+    config.kubernetes.io/local-config: "true"
+data:
+  config.json: |
+    {
+      "id": "v1",
+      "log-level": "{{.logLevel}}",
+      "base-url": "{{.baseUrl}}",
+    }
+values:
+  logLevel: debug # kpt-set: ${log-level}
+  baseUrl: https://github.com/kumorilabs # kpt-set: ${base-url}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: some-cm
+`,
+			expected: `
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: some-cm
+data:
+  config.json: |
+    {
+      "id": "v1",
+      "log-level": "debug",
+      "base-url": "https://github.com/kumorilabs",
+    }
+`,
+		},
+	}
+	runTests(t, tests)
+}
+
+func runTests(t *testing.T, tests []test) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			baseDir, err := ioutil.TempDir("", "")
@@ -295,16 +725,44 @@ data:
 			}
 			err = kio.Pipeline{
 				Inputs:  []kio.Reader{inout},
-				Filters: []kio.Filter{injector, configMaps},
+				Filters: []kio.Filter{injector},
 				Outputs: []kio.Writer{inout},
 			}.Execute()
 
+			if test.errorMsg != "" {
+				if !assert.NotNil(t, err, test.name) {
+					t.FailNow()
+				}
+				if !assert.Contains(t, err.Error(), test.errorMsg) {
+					t.FailNow()
+				}
+			}
+
+			if test.errorMsg == "" && !assert.NoError(t, err, test.name) {
+				t.FailNow()
+			}
+
+			// get results
+			results, err := injector.Results()
+			if !assert.NoError(t, err, test.name, test.name) {
+				t.FailNow()
+			}
+			if !assert.Equal(t, test.resultCount, len(results), test.name) {
+				t.FailNow()
+			}
+
+			// filter to just configmaps so we can compare expected more easily
+			err = kio.Pipeline{
+				Inputs:  []kio.Reader{inout},
+				Filters: []kio.Filter{configMaps},
+				Outputs: []kio.Writer{inout},
+			}.Execute()
 			if !assert.NoError(t, err, test.name) {
 				t.FailNow()
 			}
 
 			actual, err := ioutil.ReadFile(r.Name())
-			if !assert.NoError(t, err) {
+			if !assert.NoError(t, err, test.name) {
 				t.FailNow()
 			}
 

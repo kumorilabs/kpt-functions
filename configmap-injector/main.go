@@ -14,7 +14,7 @@ func main() {
 	cmd := command.Build(&p, command.StandaloneEnabled, false)
 
 	cmd.Short = "Inject files wrapped in KRM resources into ConfigMap keys"
-	cmd.Long = "Inject files wrapped in KRM resources into ConfigMap keys"
+	cmd.Long = "Inject files or templates wrapped in KRM resources into ConfigMap keys"
 
 	if err := cmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -26,10 +26,29 @@ type ConfigMapInjectorProcessor struct{}
 
 func (p *ConfigMapInjectorProcessor) Process(resourceList *framework.ResourceList) error {
 	injector := &configmapinjector.ConfigMapInjector{}
-	var err error
-	resourceList.Items, err = injector.Filter(resourceList.Items)
+
+	items, err := injector.Filter(resourceList.Items)
 	if err != nil {
-		return fmt.Errorf("error injecting configmap: %v", err)
+		resourceList.Results = framework.Results{
+			&framework.Result{
+				Message:  err.Error(),
+				Severity: framework.Error,
+			},
+		}
+		return resourceList.Results
 	}
+	resourceList.Items = items
+
+	results, err := injector.Results()
+	if err != nil {
+		resourceList.Results = framework.Results{
+			&framework.Result{
+				Message:  err.Error(),
+				Severity: framework.Error,
+			},
+		}
+		return resourceList.Results
+	}
+	resourceList.Results = results
 	return nil
 }
