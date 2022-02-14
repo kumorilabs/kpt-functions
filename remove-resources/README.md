@@ -13,7 +13,6 @@ Example:
 pipeline:
   mutators:
     - image: ghcr.io/kumorilabs/krm-fn-remove-resources:0.1
-      configMap:
       selectors:
         - kind: Secret
 ```
