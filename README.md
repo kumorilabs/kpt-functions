@@ -13,3 +13,8 @@ The [configmap-injector](./configmap-injector/README.md) function can inject con
 ### remove-resources
 
 The [remove-resources](./remove-resources/README.md) function removes resources by selector.
+
+### pomerium-policy
+
+The [pomerium-policy](./pomerium-policy/README.md) function injects
+[Pomerium](https://www.pomerium.com/) policies into `Ingress` resources.
