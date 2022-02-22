@@ -20,11 +20,17 @@ const (
 	ingressKind  = "Ingress"
 )
 
-var ingressApiVersions = []string{
-	"networking.k8s.io/v1",
-	"extensions/v1beta1",
-	"networking.k8s.io/v1beta1",
-}
+var (
+	ingressApiVersions = []string{
+		"networking.k8s.io/v1",
+		"extensions/v1beta1",
+		"networking.k8s.io/v1beta1",
+	}
+	FunctionConfigSelector = framework.Selector{
+		Kinds:       []string{fnKind},
+		APIVersions: []string{fnApiVersion},
+	}
+)
 
 type injectResult struct {
 	Source   *yaml.RNode
