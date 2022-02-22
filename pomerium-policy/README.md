@@ -110,20 +110,7 @@ data:
           has: blocked
 ```
 
-Note that you specify the policy in `.data.policy` in the `ConfigMap`. This also
-means you can include a policy inline in your pipeline if you wish:
-
-``` yaml
-pipeline:
-  mutators:
-    - image: ghcr.io/kumorilabs/krm-fn-pomerium-policy:0.1
-      configMap:
-        policy:
-        - allow:
-            and:
-            - email:
-                is: user@domain.com
-```
+Note that you specify the policy in `.data.policy` in the `ConfigMap`.
 
 ### Different Policies per Ingress
 
