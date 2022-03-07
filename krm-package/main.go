@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/kumorilabs/kpt-functions/krm-package/krmpackage"
 	"sigs.k8s.io/kustomize/kyaml/fn/framework/command"
 )
 
 func main() {
-	p := krmpackage.KRMPackageProcessor{}
+
+	p := KRMPackageProcessor{}
 	cmd := command.Build(&p, command.StandaloneEnabled, false)
 
 	cmd.Short = "Pulls or Pushes OCI Native KRM Packages"

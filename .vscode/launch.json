@@ -5,11 +5,33 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Launch Package",
+      "name": "Run Tests",
       "type": "go",
       "request": "launch",
       "mode": "test",
       "program": "${fileDirname}"
+    },
+    {
+      "name": "Pull",
+      "type": "go",
+      "request": "launch",
+      "mode": "debug",
+      "program": "${workspaceFolder}/krm-package",
+      "args": ["./test/pull/in/config.yaml", "./test/pull/in/config.yaml"]
+    },
+    {
+      "name": "Push",
+      "type": "go",
+      "request": "launch",
+      "mode": "debug",
+      "program": "${workspaceFolder}/krm-package",
+      "args": [
+        "./test/push/in/config.yaml",
+        "./test/push/in/deployment.yaml",
+        "./test/push/in/service.yaml",
+        "./test/push/in/configmap.yaml",
+        "./test/push/in/config.yaml"
+      ]
     }
   ]
 }

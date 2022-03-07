@@ -1,17 +1,21 @@
-package krmpackage
+package main
 
 import (
-	"github.com/kumorilabs/kpt-functions/krm-package/krmpackage/filters"
+	"github.com/kumorilabs/kpt-functions/krm-package/krmpackage"
 	"sigs.k8s.io/kustomize/kyaml/fn/framework"
 )
 
 type KRMPackageProcessor struct{}
 
 func (p *KRMPackageProcessor) Process(resourceList *framework.ResourceList) error {
-
-	filter, err := filters.NewKRMPackageFilter(resourceList.FunctionConfig)
+	config := &krmpackage.KRMPackage{}
+	err := framework.LoadFunctionConfig(resourceList.FunctionConfig, config)
 	if err != nil {
 		return err
+	}
+
+	filter := krmpackage.KRMPackageFilter{
+		Config: config,
 	}
 
 	items, err := filter.Filter(resourceList.Items)

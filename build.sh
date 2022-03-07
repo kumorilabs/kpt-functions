@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO=ghcr.io/kumorilabs
+# REPO=ghcr.io/kumorilabs
+REPO=synax.azurecr.io/kumorilabs
 
 push=0
 while [ ! $# -eq 0 ]
