@@ -12,25 +12,28 @@
       "program": "${fileDirname}"
     },
     {
-      "name": "Pull",
-      "type": "go",
-      "request": "launch",
-      "mode": "debug",
-      "program": "${workspaceFolder}/krm-package",
-      "args": ["./test/pull/in/config.yaml", "./test/pull/in/config.yaml"]
-    },
-    {
-      "name": "Push",
+      "name": "Pull kpt",
       "type": "go",
       "request": "launch",
       "mode": "debug",
       "program": "${workspaceFolder}/krm-package",
       "args": [
-        "./test/push/in/config.yaml",
-        "./test/push/in/deployment.yaml",
-        "./test/push/in/service.yaml",
-        "./test/push/in/configmap.yaml",
-        "./test/push/in/config.yaml"
+        "./test/pull-kpt/in/config.yaml",
+        "./test/pull-kpt/in/config.yaml"
+      ]
+    },
+    {
+      "name": "Push kpt",
+      "type": "go",
+      "request": "launch",
+      "mode": "debug",
+      "program": "${workspaceFolder}/krm-package",
+      "args": [
+        "./test/push-kpt/in/config.yaml",
+        "./test/push-kpt/in/deployment.yaml",
+        "./test/push-kpt/in/service.yaml",
+        "./test/push-kpt/in/configmap.yaml",
+        "./test/push-kpt/in/config.yaml"
       ]
     }
   ]

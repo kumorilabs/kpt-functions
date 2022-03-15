@@ -11,7 +11,13 @@ func (p *KRMPackageProcessor) Process(resourceList *framework.ResourceList) erro
 	config := &krmpackage.KRMPackage{}
 	err := framework.LoadFunctionConfig(resourceList.FunctionConfig, config)
 	if err != nil {
-		return err
+		resourceList.Results = framework.Results{
+			&framework.Result{
+				Message:  err.Error(),
+				Severity: framework.Error,
+			},
+		}
+		return resourceList.Results
 	}
 
 	filter := krmpackage.KRMPackageFilter{

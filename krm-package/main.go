@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 
 	"sigs.k8s.io/kustomize/kyaml/fn/framework/command"
@@ -16,7 +15,7 @@ func main() {
 	cmd.Long = "Pulls or Pushes OCI Native KRM Packages"
 
 	if err := cmd.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		// fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }

@@ -68,21 +68,72 @@ func (i *KRMPackageFilter) Filter(items []*yaml.RNode) ([]*yaml.RNode, error) {
 			return nil, err
 		}
 
-		items = append(items, newItems...)
-
-		merger := filters.MergeFilter{}
-
-		items, err = merger.Filter(items)
-		if err != nil {
-			return nil, err
+		if *i.Config.Spec.GVKNFileNames {
+			gvknFileNameFilter := GVKNFileNameFilter{}
+			newItems, err = gvknFileNameFilter.Filter(newItems)
+			if err != nil {
+				return nil, err
+			}
 		}
 
+		if *i.Config.Spec.SingleFileOutput {
+			singleFileFilter := SingleFileFilter{
+				FileName: i.Config.Spec.Package,
+			}
+			newItems, err = singleFileFilter.Filter(newItems)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		if i.Config.Spec.Path != "" {
+			pathFilter := SetPathFilter{
+				Path: i.Config.Spec.Path,
+			}
+			newItems, err = pathFilter.Filter(newItems)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		if *i.Config.Spec.ResourceMerge {
+
+			pathMergeFilter := PathFilter{
+				Path: i.Config.Spec.Path,
+			}
+
+			mergeItems, err := pathMergeFilter.Filter(items)
+			if err != nil {
+				return nil, err
+			}
+
+			mergeItems = append(mergeItems, newItems...)
+
+			mergeFilter := filters.MergeFilter{}
+
+			newItems, err = mergeFilter.Filter(mergeItems)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		items = append(items, newItems...)
+
 	case KRMPackageActionPush:
-		f := filters.IsLocalConfig{IncludeLocalConfig: i.Config.Spec.IncludeLocalConfig}
+		f := filters.IsLocalConfig{IncludeLocalConfig: *i.Config.Spec.IncludeLocalConfig}
 		packageItems, err := f.Filter(items)
 		if err != nil {
 			return nil, err
 		}
+
+		if *i.Config.Spec.GVKNFileNames {
+			gvknFileNameFilter := GVKNFileNameFilter{}
+			items, err = gvknFileNameFilter.Filter(items)
+			if err != nil {
+				return nil, err
+			}
+		}
+
 		err = i.ociPush(packageItems)
 		if err != nil {
 			return nil, err
@@ -337,7 +388,7 @@ func (i *KRMPackageFilter) Results() (framework.Results, error) {
 	var results framework.Results
 	if len(i.filterResults) == 0 {
 		results = append(results, &framework.Result{
-			Message: "no results",
+			Message: "no files to push",
 		})
 		return results, nil
 	}
@@ -350,7 +401,7 @@ func (i *KRMPackageFilter) Results() (framework.Results, error) {
 			msg = fmt.Sprintf("failed to package resources: %s", packageResult.ErrorMsg)
 			severity = framework.Error
 		} else {
-			msg = fmt.Sprintf("%s %s %s %s", packageResult.Digest[7:19], packageResult.Package, packageResult.Kind, packageResult.Name)
+			msg = fmt.Sprintf("%s %s %s %s %s", packageResult.Digest[7:19], packageResult.Package, packageResult.FilePath, packageResult.Kind, packageResult.Name)
 			severity = framework.Info
 		}
 
