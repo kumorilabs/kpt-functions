@@ -74,7 +74,9 @@ func New(fnconfig *yaml.RNode) (*Function, error) {
 func (fn *Function) Filter(items []*yaml.RNode) ([]*yaml.RNode, error) {
 	isIngress := framework.ResourceMatcherFunc(func(node *yaml.RNode) bool {
 		for _, apiV := range ingressApiVersions {
-			return node.GetApiVersion() == apiV && node.GetKind() == ingressKind
+			if node.GetApiVersion() == apiV && node.GetKind() == ingressKind {
+				return true
+			}
 		}
 		return false
 	})

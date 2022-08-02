@@ -459,6 +459,150 @@ spec:
 			resultCount:    1,
 			resultSeverity: framework.Error,
 		},
+		{
+			name: "ingress-extensions-v1beta1",
+			fnconfig: `
+apiVersion: fn.kumorilabs.io/v1alpha1
+kind: PomeriumPolicy
+metadata:
+  name: policy
+policy:
+- allow:
+    and:
+    - email:
+        is: user@domain.com
+`,
+			input: `
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aservice
+spec:
+  ports:
+  - port: 8080
+---
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: app-ingress
+spec:
+  ingressClassName: pomerium
+  rules:
+  - host: app.example.org
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: app
+            port:
+              number: 80
+`,
+			expectedOutput: `apiVersion: v1
+kind: Service
+metadata:
+  name: aservice
+spec:
+  ports:
+  - port: 8080
+---
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: app-ingress
+  annotations:
+    ingress.pomerium.io/policy: '[{"allow":{"and":[{"email":{"is":"user@domain.com"}}]}}]'
+spec:
+  ingressClassName: pomerium
+  rules:
+  - host: app.example.org
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: app
+            port:
+              number: 80
+`,
+			resultCount:    1,
+			resultSeverity: framework.Info,
+		},
+		{
+			name: "ingress-networking-v1beta1",
+			fnconfig: `
+apiVersion: fn.kumorilabs.io/v1alpha1
+kind: PomeriumPolicy
+metadata:
+  name: policy
+policy:
+- allow:
+    and:
+    - email:
+        is: user@domain.com
+`,
+			input: `
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aservice
+spec:
+  ports:
+  - port: 8080
+---
+apiVersion: networking.k8s.io/v1beta1
+kind: Ingress
+metadata:
+  name: app-ingress
+spec:
+  ingressClassName: pomerium
+  rules:
+  - host: app.example.org
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: app
+            port:
+              number: 80
+`,
+			expectedOutput: `apiVersion: v1
+kind: Service
+metadata:
+  name: aservice
+spec:
+  ports:
+  - port: 8080
+---
+apiVersion: networking.k8s.io/v1beta1
+kind: Ingress
+metadata:
+  name: app-ingress
+  annotations:
+    ingress.pomerium.io/policy: '[{"allow":{"and":[{"email":{"is":"user@domain.com"}}]}}]'
+spec:
+  ingressClassName: pomerium
+  rules:
+  - host: app.example.org
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: app
+            port:
+              number: 80
+`,
+			resultCount:    1,
+			resultSeverity: framework.Info,
+		},
 	}
 
 	for _, test := range tests {
